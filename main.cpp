@@ -24,7 +24,7 @@ int main( int argc, char** argv ) {
 }
 
 cv::Mat calcEnergy(cv::Mat input) {
-  cv::Mat output = cv::Mat::zeros(input.size(), CV_8UC1);
+  cv::Mat output = cv::Mat::zeros(input.size(), CV_32FC1);
   for(int x = 0; x < output.size().width; x++) {
     for(int y = 0; y < output.size().height; y++) {
       int xPrev = x;
@@ -39,26 +39,28 @@ cv::Mat calcEnergy(cv::Mat input) {
 
       // Calculate gradient energy for a pixel as described on chapter 4, slide 11.
       int xEnergy =
-        (input.at<cv::Vec3b>(xPrev, y).val[0] - input.at<cv::Vec3b>(xNext, y).val[0]) / 2 +
-        (input.at<cv::Vec3b>(xPrev, y).val[1] - input.at<cv::Vec3b>(xNext, y).val[1]) / 2 +
-        (input.at<cv::Vec3b>(xPrev, y).val[2] - input.at<cv::Vec3b>(xNext, y).val[2]) / 2 ;
+        (input.at<cv::Vec3b>(y, xPrev).val[0] - input.at<cv::Vec3b>(y, xNext).val[0]) / 2 +
+        (input.at<cv::Vec3b>(y, xPrev).val[1] - input.at<cv::Vec3b>(y, xNext).val[1]) / 2 +
+        (input.at<cv::Vec3b>(y, xPrev).val[2] - input.at<cv::Vec3b>(y, xNext).val[2]) / 2 ;
       int yEnergy =
-        (input.at<cv::Vec3b>(x, yPrev).val[0] - input.at<cv::Vec3b>(x, yPrev).val[0]) / 2 +
-        (input.at<cv::Vec3b>(x, yPrev).val[1] - input.at<cv::Vec3b>(x, yPrev).val[1]) / 2 +
-        (input.at<cv::Vec3b>(x, yPrev).val[2] - input.at<cv::Vec3b>(x, yPrev).val[2]) / 2 ;
+        (input.at<cv::Vec3b>(yPrev, x).val[0] - input.at<cv::Vec3b>(yPrev, x).val[0]) / 2 +
+        (input.at<cv::Vec3b>(yPrev, x).val[1] - input.at<cv::Vec3b>(yPrev, x).val[1]) / 2 +
+        (input.at<cv::Vec3b>(yPrev, x).val[2] - input.at<cv::Vec3b>(yPrev, x).val[2]) / 2 ;
 
       // use absolute values because energy can be negative - uint "underflow"
       // see avidan et al., section 3 for reference
-      int energy = abs(xEnergy) + abs(yEnergy);
-      output.at<uchar>(x, y) = energy;
+      output.at<float>(y, x) = abs(xEnergy) + abs(yEnergy);
     }
   }
+  cv::Mat jpeg;
+  output.convertTo(jpeg, CV_8UC1, 1.0/64.0);
+  cv::imwrite("energy.jpg", jpeg);
   return output;
 }
 
 cv::Mat calcCost(cv::Mat energy, int dir) {
   // calculate path cost matrix
-  cv::Mat cost = cv::Mat::zeros(energy.size(), CV_32F);
+  cv::Mat cost = cv::Mat::zeros(energy.size(), energy.type());
   if(dir == HORI) {
     energy.col(0).copyTo(cost.col(0));
     for (int x = 1; x < energy.size().width; x++) {
@@ -68,16 +70,16 @@ cv::Mat calcCost(cv::Mat energy, int dir) {
         if (y > 0) above--;
         if (y < energy.size().height) below++;
 
-        int pixelcost = std::min(std::min(cost.at<uchar>(x - 1, above), cost.at<uchar>(x - 1, y)),
-                            cost.at<uchar>(x - 1, below));
-        cost.at<uchar>(x,y) = pixelcost + energy.at<uchar>(x, y);
+        float pixelcost = std::min(std::min(cost.at<float>(above, x - 1), cost.at<float>(y, x - 1)),
+                            cost.at<float>(below, x - 1));
+        cost.at<float>(y, x) = pixelcost + energy.at<float>(y, x);
       }
     }
   } else {
     energy.row(0).copyTo(cost.row(0));
   }
-  cv::Mat cost8bit;
-  cost.convertTo(cost8bit, CV_8UC1, 1);
-  cv::imwrite("cost.jpg", cost8bit);
+  cv::Mat jpeg;
+  cost.convertTo(jpeg, CV_8UC1, 0.2);
+  cv::imwrite("cost.jpg", jpeg);
   return cost;
 }
