@@ -9,8 +9,9 @@
 #define HORI 0
 #define VERT 1
 
-cv::Mat calcEnergy(cv::Mat input);
-cv::Mat calcCost(cv::Mat input, int dir);
-std::vector<int> findSeam(cv::Mat input, int dir);
+cv::Mat calcEnergy(cv::Mat);
+cv::Mat calcCost(cv::Mat, int);
+std::vector<int> findSeam(cv::Mat, int);
+cv::Mat removeSeam(cv::Mat, std::vector<int>, int);
 
 #endif

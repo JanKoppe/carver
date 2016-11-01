@@ -19,7 +19,6 @@ int main( int argc, char** argv ) {
   int xdelta = atoi(argv[2]);
   int ydelta = atoi(argv[3]);
   while(xdelta + ydelta  > 0) {
-    cout << xdelta << " " << ydelta << endl;
     Mat energy = calcEnergy(image);
     energy.convertTo(jpeg, CV_8UC1, 0.5);
     if(xdelta > 0) {
@@ -33,6 +32,7 @@ int main( int argc, char** argv ) {
       for (int i = image.size().width; it != seam.end() && i > 0 ; ++it, i--) {
         image.at<Vec3b>(i - 1, *it) = Vec3b (0, 0, 255);
       }
+      removeSeam(image, seam, VERT).copyTo(image);
     }
     if(ydelta > 0) {
       ydelta--;
@@ -45,10 +45,12 @@ int main( int argc, char** argv ) {
       for (int i = image.size().width; it != seam.end() && i > 0 ; ++it, i--) {
         image.at<Vec3b>(*it, i -1) = Vec3b (0, 0, 255);
       }
+      imwrite("preremove.jpg", image);
+      removeSeam(image, seam, HORI).copyTo(image);
+      imwrite(argv[4], image);
     }
   }
-  imwrite(argv[4], image);
-    imwrite("cost.jpg", jpeg);
+  imwrite("cost.jpg", jpeg);
   //
   return 0;
 }
@@ -67,9 +69,9 @@ Mat calcEnergy(Mat input) {
     for(int y = 0; y < ymax; y++) {
       // prevent attempts to access outside of image
       int xprev = max(0, x - 1);
-      int xnext = min(xmax, x + 1);
+      int xnext = min(xmax - 1, x + 1);
       int yprev = max(0, y - 1);
-      int ynext = min (ymax, y + 1);
+      int ynext = min (ymax - 1, y + 1);
 
       // Calculate gradient energy for a pixel as described on chapter 4, slide 11.
       int xEnergy =
@@ -112,7 +114,7 @@ Mat calcCost(Mat energy, int dir) {
     for (int j = 0; j < jmax; j++) {
       // watch out for those borders.
       l = max(0, j - 1);
-      r = min(jmax, j + 1);
+      r = min(jmax - 1, j + 1);
       if(dir == HORI) {
         float cheapest = min(min(cost.at<float>(l, i - 1), cost.at<float>(j, i - 1)),
                              cost.at<float>(r, i - 1));
@@ -139,11 +141,11 @@ vector<int> findSeam(Mat cost, int dir) {
   int min_pos, imax, jmax;
   float min = FLT_MAX;
   if(dir == HORI) {
-    seam.reserve(cost.size().width);
+    seam.reserve(cost.size().width - 1);
     // find starting point by looking for last path point with least cost
     for(int y = 0; y < cost.size().height; y++) {
-      if(cost.at<float>(y, cost.size().width) < min) {
-        min = cost.at<float>(y, cost.size().width);
+      if(cost.at<float>(y, cost.size().width - 1) < min) {
+        min = cost.at<float>(y, cost.size().width - 1);
         min_pos = y;
       }
     }
@@ -168,8 +170,8 @@ vector<int> findSeam(Mat cost, int dir) {
   } else {
     seam.reserve(cost.size().height);
     for(int x = 0; x < cost.size().width; x++) {
-      if(cost.at<float>(cost.size().height, x) < min) {
-        min = cost.at<float>(cost.size().height, x);
+      if(cost.at<float>(cost.size().height - 1, x) < min) {
+        min = cost.at<float>(cost.size().height - 1, x);
         min_pos = x;
       }
     }
@@ -180,7 +182,7 @@ vector<int> findSeam(Mat cost, int dir) {
       int left = cur;
       int right = cur;
       if(cur > 0) left--;
-      if(cur < cost.size().width) right++;
+      if(cur < cost.size().width - 1) right++;
       if(cost.at<float>(y - 1, left) < cost.at<float>(y - 1, cur)) next = left;
       if(cost.at<float>(y - 1, right) < cost.at<float>(y - 1, cur)) next = right;
       seam.push_back(next);
@@ -188,4 +190,30 @@ vector<int> findSeam(Mat cost, int dir) {
     }
   }
   return seam;
+}
+
+cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
+  // reserve new image matrix shrunk by one line in dir direction
+  cv::Mat output = Mat::zeros(
+                    Size(input.size().height - dir, input.size().width - (dir ^ 1)),
+                    input.type());
+  // copy left/top pixels
+  if(dir == VERT) {
+    vector<int>::iterator it = seam.begin();
+    for(int i = input.size().height - 1; i >= 0 && it != seam.end(); i++) {
+      for (int j = 0; j < *it; j++) {
+        output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j);
+      }
+      it++;
+    }//
+  } else {
+    vector<int>::iterator it = seam.begin();
+    for(int i = input.size().width - 1; i >= 0 && it != seam.end(); i++) {
+      for (int j = 0; j < *it; j++) {
+        output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
+      }
+      it++;
+    }
+  }
+  return output;
 }
