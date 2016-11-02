@@ -19,6 +19,7 @@ int main( int argc, char** argv ) {
   int xdelta = atoi(argv[2]);
   int ydelta = atoi(argv[3]);
   while(xdelta + ydelta  > 0) {
+    cout << "xdelta " << xdelta << " ydelta " << ydelta << endl;
     if(xdelta > 0) {
       xdelta--;
       Mat energy = calcEnergy(image);
@@ -177,10 +178,17 @@ vector<int> findSeam(Mat cost, int dir) {
   return seam;
 }
 
+/**
+ * Remove a Seam from the input Image in direction dir
+ * @param input Image
+ * @param seam  vector for seam
+ * @param dir   direction of the seam
+ * @return  image with seam removed
+ */
 cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
+  cv::Mat output = Mat::zeros(Size(input.size().width - dir, input.size().height - (dir ^ 1)), input.type());
+  vector<int>::iterator it = seam.begin();
   if(dir == VERT) {
-    cv::Mat output = Mat::zeros(Size(input.size().height, input.size().width - 1), input.type());
-    vector<int>::iterator it = seam.begin();
     for(int i = input.size().height - 1; i >= 0 && it != seam.end(); i--) {
       // unchanged pixels
       for (int j = 0; j < *it; j++) {
@@ -192,10 +200,7 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
       }
       it++;
     }
-    return output;
   } else {
-    cv::Mat output = Mat::zeros(Size(input.size().height - 1, input.size().width), input.type());
-    vector<int>::iterator it = seam.begin();
     for(int i = input.size().width - 1; i >= 0 && it != seam.end(); i--) {
       for (int j = 0; j < *it; j++) {
         output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
@@ -205,6 +210,6 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
       }
       it++;
     }
-    return output;
   }
+  return output;
 }
