@@ -19,39 +19,24 @@ int main( int argc, char** argv ) {
   int xdelta = atoi(argv[2]);
   int ydelta = atoi(argv[3]);
   while(xdelta + ydelta  > 0) {
-    Mat energy = calcEnergy(image);
-    energy.convertTo(jpeg, CV_8UC1, 0.5);
     if(xdelta > 0) {
       xdelta--;
+      Mat energy = calcEnergy(image);
       Mat cost = calcCost(energy, VERT);
-      cost.convertTo(jpeg, CV_8UC1, 1.0/32.0);
-      imwrite("energy.jpg", jpeg);
       vector<int> seam = findSeam(cost, VERT);
-      // debugging code: paint seam red and save image
-       vector<int>::iterator it = seam.begin();
-      for (int i = image.size().width; it != seam.end() && i > 0 ; ++it, i--) {
-        image.at<Vec3b>(i - 1, *it) = Vec3b (0, 0, 255);
-      }
       removeSeam(image, seam, VERT).copyTo(image);
+      cout << "removed one vertical seam." << endl;
     }
     if(ydelta > 0) {
       ydelta--;
+      Mat energy = calcEnergy(image);
       Mat cost = calcCost(energy, HORI);
-      cost.convertTo(jpeg, CV_8UC1, 1.0/32.0);
-      imwrite("energy.jpg", jpeg);
       vector<int> seam = findSeam(cost, HORI);
-      // debugging code: paint seam red and save image
-       vector<int>::iterator it = seam.begin();
-      for (int i = image.size().width; it != seam.end() && i > 0 ; ++it, i--) {
-        image.at<Vec3b>(*it, i -1) = Vec3b (0, 0, 255);
-      }
-      imwrite("preremove.jpg", image);
       removeSeam(image, seam, HORI).copyTo(image);
-      imwrite(argv[4], image);
+      cout << "removed one horizontal seam." << endl;
     }
   }
-  imwrite("cost.jpg", jpeg);
-  //
+  imwrite(argv[4], image);
   return 0;
 }
 
@@ -193,27 +178,33 @@ vector<int> findSeam(Mat cost, int dir) {
 }
 
 cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
-  // reserve new image matrix shrunk by one line in dir direction
-  cv::Mat output = Mat::zeros(
-                    Size(input.size().height - dir, input.size().width - (dir ^ 1)),
-                    input.type());
-  // copy left/top pixels
   if(dir == VERT) {
+    cv::Mat output = Mat::zeros(Size(input.size().height, input.size().width - 1), input.type());
     vector<int>::iterator it = seam.begin();
-    for(int i = input.size().height - 1; i >= 0 && it != seam.end(); i++) {
+    for(int i = input.size().height - 1; i >= 0 && it != seam.end(); i--) {
+      // unchanged pixels
       for (int j = 0; j < *it; j++) {
         output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j);
       }
-      it++;
-    }//
-  } else {
-    vector<int>::iterator it = seam.begin();
-    for(int i = input.size().width - 1; i >= 0 && it != seam.end(); i++) {
-      for (int j = 0; j < *it; j++) {
-        output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
+      // shift pixels after seam
+      for( int j = *it; j < output.size().width; j++) {
+        output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j + 1);
       }
       it++;
     }
+    return output;
+  } else {
+    cv::Mat output = Mat::zeros(Size(input.size().height - 1, input.size().width), input.type());
+    vector<int>::iterator it = seam.begin();
+    for(int i = input.size().width - 1; i >= 0 && it != seam.end(); i--) {
+      for (int j = 0; j < *it; j++) {
+        output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
+      }
+      for( int j = *it; j < output.size().height; j++) {
+        output.at<Vec3b>(j, i) = input.at<Vec3b>(j + 1, i);
+      }
+      it++;
+    }
+    return output;
   }
-  return output;
 }
