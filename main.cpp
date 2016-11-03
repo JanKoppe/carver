@@ -1,23 +1,39 @@
+/* carver.cpp -- seam carving implementation done the hard way.
+ *
+ * Copyright (C) 2016 Jan Koppe
+ *
+ * This software may be modified and distributed under the terms
+ * of the MIT license.  See the LICENSE file for details.
+ */
+
 #include "main.hpp"
 
 using namespace std;
 using namespace cv;
 
 int main( int argc, char** argv ) {
-  if( argc != 5) {
-    cout << "Usage: " << argv[0] << " [inputimage] [x-Delta] [y-Delta] [output]" << endl;
-    return -1;
+  if(argc != 5) {
+    cout << "wrong arguments. usage: carver input x-dimension y-dimension output." << endl;
   }
 
   Mat image = imread(argv[1], CV_LOAD_IMAGE_COLOR);
+
   if(!image.data) {
     cout << "Could not open or find the image" << endl;
     return -1;
   }
 
-  Mat jpeg;
-  int xdelta = atoi(argv[2]);
-  int ydelta = atoi(argv[3]);
+  // calculate delta from actual and target image size
+  int xdelta = image.size().width - atoi(argv[2]);
+  int ydelta = image.size().height - atoi(argv[3]);
+
+  if(xdelta < 0 || ydelta < 0) {
+    cout << "can only shrink images. target size bigger than original." << endl;
+    return -1;
+  }
+
+  // alternate removing horizontal/vertical seams until
+  // target image size has been reached
   while(xdelta + ydelta  > 0) {
     cout << "xdelta " << xdelta << " ydelta " << ydelta << endl;
     if(xdelta > 0) {
@@ -32,6 +48,8 @@ int main( int argc, char** argv ) {
       ydelta--;
       Mat energy = calcEnergy(image);
       Mat cost = calcCost(energy, HORI);
+      saveImageNormalized("cost.jpg", cost);
+      saveImageNormalized("energy.jpg", energy);
       vector<int> seam = findSeam(cost, HORI);
       removeSeam(image, seam, HORI).copyTo(image);
       cout << "removed one horizontal seam." << endl;
@@ -39,6 +57,26 @@ int main( int argc, char** argv ) {
   }
   imwrite(argv[4], image);
   return 0;
+}
+
+/**
+ *  Helper function: save normalized image
+ *  @param name
+ *  @param image
+ *  @return void
+ */
+void saveImageNormalized(const std::string& name, cv::Mat image) {
+  double min, max;
+  Mat jpeg;
+  //find minimum and maximum values in mat to properly resize to 8 bits
+  minMaxLoc(image, &min, &max);
+  double alpha, beta;
+  alpha = 256.0/max;
+  beta = -1.0 * min * (256.0/max);
+  cout << "alpha " << alpha << " beta " << beta << endl;
+  image.convertTo(jpeg, CV_8UC3, alpha, beta);
+  imwrite(name, jpeg);
+  return;
 }
 
 /**
@@ -91,22 +129,26 @@ Mat calcCost(Mat energy, int dir) {
     energy.col(0).copyTo(cost.col(0));
     imax = energy.size().width;
     jmax = energy.size().height;
-  } else {
-    energy.row(0).copyTo(cost.row(0));
-    imax = energy.size().height;
-    jmax = energy.size().width;
-  }
-  for (int i = 1; i < imax; i++) {
-    for (int j = 0; j < jmax; j++) {
-      // watch out for those borders.
-      l = max(0, j - 1);
-      r = min(jmax - 1, j + 1);
-      if(dir == HORI) {
+    for (int i = 1; i < imax; i++) {
+      for (int j = 0; j < jmax; j++) {
+        // watch out for those borders.
+        l = max(0, j - 1);
+        r = min(jmax - 1, j + 1);
         float cheapest = min(min(cost.at<float>(l, i - 1), cost.at<float>(j, i - 1)),
                              cost.at<float>(r, i - 1));
         // cost is the total previous cost from the cheapest path so far and the pixels own energy.
         cost.at<float>(j, i) = cheapest + energy.at<float>(j, i);
-      } else {
+      }
+    }
+  } else {
+    energy.row(0).copyTo(cost.row(0));
+    imax = energy.size().height;
+    jmax = energy.size().width;
+    for (int i = 1; i < imax; i++) {
+      for (int j = 0; j < jmax; j++) {
+        // watch out for those borders.
+        l = max(0, j - 1);
+        r = min(jmax - 1, j + 1);
         float cheapest = min(min(cost.at<float>(i - 1, l), cost.at<float>(i - 1, j)),
                              cost.at<float>(i - 1, r));
         cost.at<float>(i, j) = cheapest + energy.at<float>(i, j);
@@ -128,18 +170,17 @@ vector<int> findSeam(Mat cost, int dir) {
   float min = FLT_MAX;
   if(dir == HORI) {
     seam.reserve(cost.size().width - 1);
-    // find starting point by looking for last path point with least cost
+    // find starting point by looking for end point with least cost
     for(int y = 0; y < cost.size().height; y++) {
       if(cost.at<float>(y, cost.size().width - 1) < min) {
         min = cost.at<float>(y, cost.size().width - 1);
         min_pos = y;
       }
     }
-    // traverse from this point back along the cheapest neighbours, memorize path
     seam.push_back(min_pos);
+    // trace back cheapest path and save steps
     int cur = min_pos;
     int next = cur;
-    //TODO: check boundaries.
     for(int x = cost.size().width - 1; x > 0; x--) {
       int above = cur;
       int below = cur;
