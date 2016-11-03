@@ -6,7 +6,7 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-#include "main.hpp"
+#include "carver.hpp"
 
 using namespace std;
 using namespace cv;

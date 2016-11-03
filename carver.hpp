@@ -6,8 +6,8 @@
  * of the MIT license.  See the LICENSE file for details.
  */
 
-#ifndef MAIN_HPP
-#define MAIN_HPP
+#ifndef CARVER_HPP
+#define CARVER_HPP
 
 #include <cmath>
 #include <iostream>
