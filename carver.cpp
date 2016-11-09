@@ -31,6 +31,9 @@ int main( int argc, char** argv ) {
   if(xdelta < 0 || ydelta < 0) {
     cout << "can only shrink images. target size bigger than original." << endl;
     return -1;
+  } else if (xdelta > image.size().width - 2 || ydelta > image.size().height - 2) {
+    cout << "target image size too small." << endl;
+    return -1;
   } else {
     cout << "Remove " << xdelta << " columns and " << ydelta << " rows from the image." << endl;
   }
