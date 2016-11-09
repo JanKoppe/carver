@@ -252,6 +252,7 @@ vector<int> findSeam(Mat cost, int dir) {
  * @return  image with seam removed
  */
 cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
+  // allocate new output matrix with one col/row less than input matrix
   cv::Mat output = Mat::zeros(Size(input.size().width - dir, input.size().height - (dir ^ 1)), input.type());
   vector<int>::iterator it = seam.begin();
   if(dir == VERT) {
@@ -261,8 +262,8 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
         output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j);
       }
       // copy changed pixels (after seam) over, but shift by 1 in respective direction
-      for( int j = *it + 1; j < output.size().width; j++) {
-        output.at<Vec3b>(i, j - 1) = input.at<Vec3b>(i, j);
+      for( int j = *it; j < output.size().width - 1; j++) {
+        output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j + 1);
       }
       it++;
     }
@@ -271,8 +272,8 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
       for (int j = 0; j < *it; j++) {
         output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
       }
-      for( int j = *it + 1; j < output.size().height; j++) {
-        output.at<Vec3b>(j - 1, i) = input.at<Vec3b>(j, i);
+      for( int j = *it; j < output.size().height - 1; j++) {
+        output.at<Vec3b>(j, i) = input.at<Vec3b>(j + 1, i);
       }
       it++;
     }
