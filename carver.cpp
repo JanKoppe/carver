@@ -13,7 +13,8 @@ using namespace cv;
 
 int main( int argc, char** argv ) {
   if(argc != 5) {
-    cout << "wrong arguments. usage: carver input x-dimension y-dimension output." << endl;
+    cout << "Usage: " << argv[0] << " input-image new-x-dimension new-y-dimension output-image" << endl;
+    return -1;
   }
 
   Mat image = imread(argv[1], CV_LOAD_IMAGE_COLOR);
@@ -30,37 +31,46 @@ int main( int argc, char** argv ) {
   if(xdelta < 0 || ydelta < 0) {
     cout << "can only shrink images. target size bigger than original." << endl;
     return -1;
+  } else {
+    cout << "Remove " << xdelta << " columns and " << ydelta << " rows from the image." << endl;
   }
 
   // alternate removing horizontal/vertical seams until
   // target image size has been reached
   while(xdelta + ydelta  > 0) {
-    cout << "xdelta " << xdelta << " ydelta " << ydelta << endl;
     if(xdelta > 0) {
       xdelta--;
+      // first calculate energy of image. this is the the simple first derivative
+      // as described in the paper
       Mat energy = calcEnergy(image);
+      // calculate the resulting cost matrix using dynamic programming
       Mat cost = calcCost(energy, VERT);
+      // uncomment these lines to see intermediate results for energy & cost matrix
+      //  saveImageNormalized("cost.jpg", cost);
+      //  saveImageNormalized("energy.jpg", energy);
+
+      // find the cheapest path along this cost matrix
       vector<int> seam = findSeam(cost, VERT);
+      // now remove the pixels on this seam and continue working with the smaller
+      // image.
       removeSeam(image, seam, VERT).copyTo(image);
-      cout << "removed one vertical seam." << endl;
     }
     if(ydelta > 0) {
       ydelta--;
       Mat energy = calcEnergy(image);
       Mat cost = calcCost(energy, HORI);
-      saveImageNormalized("cost.jpg", cost);
-      saveImageNormalized("energy.jpg", energy);
       vector<int> seam = findSeam(cost, HORI);
       removeSeam(image, seam, HORI).copyTo(image);
-      cout << "removed one horizontal seam." << endl;
     }
   }
+  cout << "Saving new image as " << argv[4] << endl;
   imwrite(argv[4], image);
+  cout << "All done." << endl;
   return 0;
 }
 
 /**
- *  Helper function: save normalized image
+ *  Helper: save image with values normalized to 0-255 range
  *  @param name
  *  @param image
  *  @return void
@@ -71,9 +81,12 @@ void saveImageNormalized(const std::string& name, cv::Mat image) {
   //find minimum and maximum values in mat to properly resize to 8 bits
   minMaxLoc(image, &min, &max);
   double alpha, beta;
+  // safeguard for max = 0, which would result in divbyzero
+  if(max < 0.000000001) max = 0.000000001;
   alpha = 256.0/max;
   beta = -1.0 * min * (256.0/max);
   cout << "alpha " << alpha << " beta " << beta << endl;
+  cout << image.size().width << image.size().height << endl;
   image.convertTo(jpeg, CV_8UC3, alpha, beta);
   imwrite(name, jpeg);
   return;
@@ -107,7 +120,7 @@ Mat calcEnergy(Mat input) {
         (input.at<Vec3b>(yprev, x).val[1] - input.at<Vec3b>(ynext, x).val[1]) / 2 +
         (input.at<Vec3b>(yprev, x).val[2] - input.at<Vec3b>(ynext, x).val[2]) / 2 ;
 
-      // use absolute values because energy can be negative
+      // use absolutes because values can be negative
       // see avidan et al., section 3 for reference
       energy.at<float>(y, x) = abs(xEnergy) + abs(yEnergy);
     }
@@ -124,19 +137,23 @@ Mat calcEnergy(Mat input) {
 Mat calcCost(Mat energy, int dir) {
   Mat cost = Mat::zeros(energy.size(), energy.type());
   int imax, jmax, l, r;
+  // code redundancy vs. speed - further comments apply to both directions.
   if(dir == HORI) {
-    // cost for the first step is their own energy.
+    // cost for the first step is only their energy, so copy first column
     energy.col(0).copyTo(cost.col(0));
+
     imax = energy.size().width;
     jmax = energy.size().height;
     for (int i = 1; i < imax; i++) {
       for (int j = 0; j < jmax; j++) {
-        // watch out for those borders.
         l = max(0, j - 1);
         r = min(jmax - 1, j + 1);
+
+        // find cheapest path so far by comparing left/middle/right
         float cheapest = min(min(cost.at<float>(l, i - 1), cost.at<float>(j, i - 1)),
                              cost.at<float>(r, i - 1));
-        // cost is the total previous cost from the cheapest path so far and the pixels own energy.
+        // cost is the total previous cost from the cheapest path so far and
+        // the pixels own energy.
         cost.at<float>(j, i) = cheapest + energy.at<float>(j, i);
       }
     }
@@ -146,7 +163,6 @@ Mat calcCost(Mat energy, int dir) {
     jmax = energy.size().width;
     for (int i = 1; i < imax; i++) {
       for (int j = 0; j < jmax; j++) {
-        // watch out for those borders.
         l = max(0, j - 1);
         r = min(jmax - 1, j + 1);
         float cheapest = min(min(cost.at<float>(i - 1, l), cost.at<float>(i - 1, j)),
@@ -168,8 +184,11 @@ vector<int> findSeam(Mat cost, int dir) {
   vector<int> seam;
   int min_pos, imax, jmax;
   float min = FLT_MAX;
+  // code redundancy vs. speed - further comments apply to both directions.
   if(dir == HORI) {
+    // reserve final length of seam to avoid reallocations
     seam.reserve(cost.size().width - 1);
+
     // find starting point by looking for end point with least cost
     for(int y = 0; y < cost.size().height; y++) {
       if(cost.at<float>(y, cost.size().width - 1) < min) {
@@ -177,17 +196,20 @@ vector<int> findSeam(Mat cost, int dir) {
         min_pos = y;
       }
     }
+    // save first step of seam
     seam.push_back(min_pos);
-    // trace back cheapest path and save steps
+
+    // trace back the cheapest path from this point.
     int cur = min_pos;
     int next = cur;
     for(int x = cost.size().width - 1; x > 0; x--) {
       int above = cur;
       int below = cur;
-      // watch out for those pesky edges!
+      // watch out for edges!
       if(cur > 0) above--;
       if(cur < cost.size().height) below++;
-      // select cheapest neighbour
+
+      // select cheapest neighbour from next step above/middle/below.
       if(cost.at<float>(above, x - 1) < cost.at<float>(cur, x - 1)) next = above;
       if(cost.at<float>(below, x - 1) < cost.at<float>(cur, x - 1)) next = below;
       // memorize, continue.
@@ -231,13 +253,13 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
   vector<int>::iterator it = seam.begin();
   if(dir == VERT) {
     for(int i = input.size().height - 1; i >= 0 && it != seam.end(); i--) {
-      // unchanged pixels
+      // copy unchanged pixels (between origin and seam) over to new image
       for (int j = 0; j < *it; j++) {
         output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j);
       }
-      // shift pixels after seam
-      for( int j = *it; j < output.size().width; j++) {
-        output.at<Vec3b>(i, j) = input.at<Vec3b>(i, j + 1);
+      // copy changed pixels (after seam) over, but shift by 1 in respective direction
+      for( int j = *it + 1; j < output.size().width; j++) {
+        output.at<Vec3b>(i, j - 1) = input.at<Vec3b>(i, j);
       }
       it++;
     }
@@ -246,8 +268,8 @@ cv::Mat removeSeam(cv::Mat input, std::vector<int> seam, int dir) {
       for (int j = 0; j < *it; j++) {
         output.at<Vec3b>(j, i) = input.at<Vec3b>(j, i);
       }
-      for( int j = *it; j < output.size().height; j++) {
-        output.at<Vec3b>(j, i) = input.at<Vec3b>(j + 1, i);
+      for( int j = *it + 1; j < output.size().height; j++) {
+        output.at<Vec3b>(j - 1, i) = input.at<Vec3b>(j, i);
       }
       it++;
     }
